@@ -2,68 +2,66 @@ import React, { useState } from 'react';
 import logo from './logo.svg';
 import './App.css';
 
-import { taskEither } from 'fp-ts';
-import { chain } from 'fp-ts/lib/TaskEither';
+import * as TE from 'fp-ts/lib/TaskEither';
+import * as E from 'fp-ts/lib/Either';
 import { pipe } from 'fp-ts/lib/function'; 
 import { z } from 'zod';
-
-const url = 'https://official-joke-api.appspot.com/random_joke';
+import axios from 'axios';
 
 function App() {
   const [setup, setSetup] = useState("");
   const [punchline, setPunchline] = useState("");
+  const [errorInFetch, setErrorInFetch] = useState("");
 
-  const getUrl: (x: string) => taskEither.TaskEither<Error, string> = (url) => {
-    return taskEither.tryCatch(
-      () => fetch(url).then((res) => res.text()),
+  const getUrl: (url: string) => TE.TaskEither<Error, object> = (url) => 
+    TE.tryCatch(
+      () => axios.get(url).then((res) => res.data),
       (reason) => new Error(String(reason))
     )
-  }
-
-  const parseJson: (x: string) => taskEither.TaskEither<Error, object> = (json) => {
-    return taskEither.tryCatch(
-      () => new Promise((resolve) => resolve(JSON.parse(json))),
-      (reason) => new Error(String(reason))
-    )
-  }
 
   const ValidJoke = z.object({setup: z.string(), punchline: z.string()})
   type ValidJokeType = z.infer<typeof ValidJoke>
 
-  const validateJoke: (x: object) => taskEither.TaskEither<Error, ValidJokeType> = (x) => {
+  const validateJoke: (x: object) => TE.TaskEither<Error, ValidJokeType> = (x) => {
     const parsed = ValidJoke.safeParse(x)
-    return parsed.success ? taskEither.right(parsed.data) : taskEither.left(parsed.error)
+    return parsed.success ? TE.right(parsed.data) : TE.left(parsed.error)
   };
   
-
-  const getFromApiAndFormat = (url: string) => {
+  const getJokeFromApi = (url: string) => {
     return pipe(
       url,
       getUrl,
-      chain(parseJson),
-      chain(validateJoke)
+      TE.chain(validateJoke),
     )
   }
 
-  const trim = (s: string) => s.slice(1, -1)
+  const url = 'https://official-joke-api.appspot.com/random_joke';
+  // const url = 'https://notavalidurl.fortesting'
 
-  const handleClick = () => {
-    getFromApiAndFormat(url)
-    const {newSetup, newPunchline} = 
-    setSetup(trim(JSON.stringify(newSetup)))
-    setPunchline(trim(JSON.stringify(newPunchline)))
+  const unsafeHandleClick = async () => {
+    pipe(
+      await getJokeFromApi(url)(),
+      E.match(
+        (error) => setErrorInFetch(String(error)),
+        (result) => {
+          setSetup(result.setup)        
+          setPunchline(result.punchline)        
+        }
+      )
+    )
   }
 
   return (
     <div className="App">
       <header className="App-header">
         <img src={logo} className="App-logo" alt="logo" />
-        <button onClick={handleClick}>
+        <button onClick={unsafeHandleClick}>
           Get a joke
         </button>
         <p>{(setup && punchline) ? 
           `${setup} ... ${punchline}` 
           : "Just waiting for you to get a joke..."}</p>
+        <p>{errorInFetch ? `Something went wrong! ${errorInFetch}` : ""}</p>
       </header>
     </div>
   );
