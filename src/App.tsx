@@ -1,48 +1,64 @@
 import React, { useState } from 'react';
 import logo from './logo.svg';
 import './App.css';
+import { NetworkError } from './Errors';
 
 import * as TE from 'fp-ts/lib/TaskEither';
 import * as E from 'fp-ts/lib/Either';
 import { pipe } from 'fp-ts/lib/function'; 
 import { z } from 'zod';
 import axios from 'axios';
+import { match, P } from 'ts-pattern';
+
+const ValidJoke = z.object({setup: z.string(), punchline: z.string()})
+type ValidJokeType = z.infer<typeof ValidJoke>
+
+export type JokeResultsError = 
+  | NetworkError
+  | z.ZodError<ValidJokeType>
 
 function App() {
   const [setup, setSetup] = useState("");
   const [punchline, setPunchline] = useState("");
-  const [errorInFetch, setErrorInFetch] = useState("");
+  const [error, setError] = useState("");
 
-  const getUrl: (url: string) => TE.TaskEither<Error, object> = (url) => 
-    TE.tryCatch(
-      () => axios.get(url).then((res) => res.data),
-      (reason) => new Error(String(reason))
+  const getUrl = (url: string) => 
+    pipe(
+      TE.tryCatch(
+        () => axios.get(url).then((res) => res.data),
+        (reason) => new NetworkError(String(reason))
+      ),
     )
 
-  const ValidJoke = z.object({setup: z.string(), punchline: z.string()})
-  type ValidJokeType = z.infer<typeof ValidJoke>
-
-  const validateJoke: (x: object) => TE.TaskEither<Error, ValidJokeType> = (x) => {
+  const validateJoke = (x: object) => {
     const parsed = ValidJoke.safeParse(x)
     return parsed.success ? TE.right(parsed.data) : TE.left(parsed.error)
   };
   
-  const getJokeFromApi = (url: string) => {
+  const getJokeFromApi = (url: string): TE.TaskEither<JokeResultsError, ValidJokeType> => {
     return pipe(
       url,
       getUrl,
-      TE.chain(validateJoke),
+      TE.chainW(validateJoke),
     )
   }
 
   const url = 'https://official-joke-api.appspot.com/random_joke';
-  // const url = 'https://notavalidurl.fortesting'
 
   const unsafeHandleClick = async () => {
     pipe(
       await getJokeFromApi(url)(),
-      E.match(
-        (error) => setErrorInFetch(String(error)),
+      E.fold(
+        (error) => {
+          match(error)
+            .with(P.instanceOf(NetworkError), (e) => (
+              setError(String(`There was something wrong with the API call! ${e.message}`))
+            ))
+            .with(P.instanceOf(z.ZodError), (e) => (
+              setError(String(`The data did not return in the shape we expected! ${e.message}`))
+            ))
+            .exhaustive()
+        },
         (result) => {
           setSetup(result.setup)        
           setPunchline(result.punchline)        
@@ -54,14 +70,16 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
         <button onClick={unsafeHandleClick}>
           Get a joke
         </button>
-        <p>{(setup && punchline) ? 
-          `${setup} ... ${punchline}` 
-          : "Just waiting for you to get a joke..."}</p>
-        <p>{errorInFetch ? `Something went wrong! ${errorInFetch}` : ""}</p>
+        <p>{
+          error ? 
+          `${error}` :
+          (setup && punchline) ? 
+            `${setup} ... ${punchline}` 
+            : "Just waiting for you to get a joke..."
+        }</p>
       </header>
     </div>
   );
