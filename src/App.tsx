@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import logo from './logo.svg';
 import './App.css';
 import { NetworkError } from './Errors';
 
@@ -22,28 +21,24 @@ function App() {
   const [punchline, setPunchline] = useState("");
   const [error, setError] = useState("");
 
-  const getUrl = (url: string) => 
-    pipe(
-      TE.tryCatch(
-        () => axios.get(url).then((res) => res.data),
-        (reason) => new NetworkError(String(reason))
-      ),
-    )
+  const getUrl = (url: string) =>
+    TE.tryCatch(
+      () => axios.get(url).then((res) => res.data),
+      (reason) => new NetworkError(String(reason))
+  );
 
   const validateJoke = (x: object) => {
-    const parsed = ValidJoke.safeParse(x)
-    return parsed.success ? TE.right(parsed.data) : TE.left(parsed.error)
+    const parsed = ValidJoke.safeParse(x);
+    return parsed.success ? TE.right(parsed.data) : TE.left(parsed.error);
   };
-  
-  const getJokeFromApi = (url: string): TE.TaskEither<JokeResultsError, ValidJokeType> => {
-    return pipe(
-      url,
-      getUrl,
-      TE.chainW(validateJoke),
-    )
-  }
 
-  const url = 'https://official-joke-api.appspot.com/random_joke';
+  const getJokeFromApi = (
+    url: string
+  ): TE.TaskEither<JokeResultsError, ValidJokeType> => {
+    return pipe(url, getUrl, TE.chainW(validateJoke));
+  };
+
+  const url = "https://official-joke-api.appspot.com/random_joke";
 
   const unsafeHandleClick = async () => {
     pipe(
@@ -51,35 +46,41 @@ function App() {
       E.fold(
         (error) => {
           match(error)
-            .with(P.instanceOf(NetworkError), (e) => (
-              setError(String(`There was something wrong with the API call! ${e.message}`))
-            ))
-            .with(P.instanceOf(z.ZodError), (e) => (
-              setError(String(`The data did not return in the shape we expected! ${e.message}`))
-            ))
-            .exhaustive()
+            .with(P.instanceOf(NetworkError), (e) =>
+              setError(
+                String(
+                  `There was something wrong with the API call! ${e.message}`
+                )
+              )
+            )
+            .with(P.instanceOf(z.ZodError), (e) =>
+              setError(
+                String(
+                  `The data did not return in the shape we expected! ${e.message}`
+                )
+              )
+            )
+            .exhaustive();
         },
         (result) => {
-          setSetup(result.setup)        
-          setPunchline(result.punchline)        
+          setSetup(result.setup);
+          setPunchline(result.punchline);
         }
       )
-    )
-  }
+    );
+  };
 
   return (
     <div className="App">
       <header className="App-header">
-        <button onClick={unsafeHandleClick}>
-          Get a joke
-        </button>
-        <p>{
-          error ? 
-          `${error}` :
-          (setup && punchline) ? 
-            `${setup} ... ${punchline}` 
-            : "Just waiting for you to get a joke..."
-        }</p>
+        <button onClick={unsafeHandleClick}>Get a joke</button>
+        <p>
+          {error
+            ? `${error}`
+            : setup && punchline
+              ? `${setup} ... ${punchline}`
+              : "Just waiting for you to get a joke..."}
+        </p>
       </header>
     </div>
   );
