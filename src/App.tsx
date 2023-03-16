@@ -16,27 +16,27 @@ export type JokeResultsError =
   | NetworkError
   | z.ZodError<ValidJokeType>
 
+export const getUrl = (url: string) =>
+  TE.tryCatch(
+    () => axios.get(url).then((res) => res.data),
+    (reason) => new NetworkError(String(reason))
+);
+
+export const validateJoke = (x: object) => {
+  const parsed = ValidJoke.safeParse(x);
+  return parsed.success ? TE.right(parsed.data) : TE.left(parsed.error);
+};
+
+export const getJokeFromApi = (
+  url: string
+): TE.TaskEither<JokeResultsError, ValidJokeType> => {
+  return pipe(url, getUrl, TE.chainW(validateJoke));
+};
+
 function App() {
   const [setup, setSetup] = useState("");
   const [punchline, setPunchline] = useState("");
   const [error, setError] = useState("");
-
-  const getUrl = (url: string) =>
-    TE.tryCatch(
-      () => axios.get(url).then((res) => res.data),
-      (reason) => new NetworkError(String(reason))
-  );
-
-  const validateJoke = (x: object) => {
-    const parsed = ValidJoke.safeParse(x);
-    return parsed.success ? TE.right(parsed.data) : TE.left(parsed.error);
-  };
-
-  const getJokeFromApi = (
-    url: string
-  ): TE.TaskEither<JokeResultsError, ValidJokeType> => {
-    return pipe(url, getUrl, TE.chainW(validateJoke));
-  };
 
   const url = "https://official-joke-api.appspot.com/random_joke";
 
