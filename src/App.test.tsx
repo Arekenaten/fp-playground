@@ -1,41 +1,62 @@
 import axios from "axios";
-import * as TE from "fp-ts/TaskEither";
 import { NetworkError } from "./Errors";
-import {getUrl} from './App'
+import {getUrl, validateJoke} from './App'
 
 jest.mock("axios");
 
 describe("getUrl", () => {
-  describe("when curried", () => {
-    // I'm still investigating, but (since TypeScript can't do runtime type checks) this may be the best "unit" test we can get
-    it("should return a TaskEither", () => {
-      const result = getUrl("http://mocked-url.com");
-      expect(result).toBeEither()
-    })
-  })
-
   // These tests skew further toward "integration" because we must mock axios to ensure the call to the function works
-  describe("when invoked", () => {
-    it("should return data when the axios call is valid", async () => {
-      const mockedResponse = { data: "mocked data" };
-      (axios.get as jest.MockedFunction<typeof axios.get>).mockResolvedValueOnce(
-        mockedResponse
-      );
+  it("returns data when the axios call is valid", async () => {
+    const mockedResponse = { data: "mocked data" };
+    (axios.get as jest.MockedFunction<typeof axios.get>).mockResolvedValueOnce(
+      mockedResponse
+    );
 
-      const result = await getUrl("http://mocked-url.com")();
+    const result = await getUrl("http://mocked-url.com")();
 
-      expect(result).toEqual(await TE.right("mocked data")());
-    });
+    // This matcher comes from a library: https://github.com/relmify/jest-fp-ts
+    // It would be perfect if it had a matcher for TaskEither (we could have a simple unit test for getUrl => instance of TaskEither)
+    // but we can still use it here because by invoking getUrl we actually "unwrap" the value from the promise (TaskEither)
+    // Maybe extending this library is something we could have on our Open Source roster?
+    expect(result).toEqualRight("mocked data");
+  });
 
-    it("should return NetworkError when the axios call is invalid", async () => {
-      const mockedError = "mocked error";
-      (axios.get as jest.MockedFunction<typeof axios.get>).mockRejectedValueOnce(
-        mockedError
-      );
+  it("returns NetworkError when the axios call is invalid", async () => {
+    const mockedError = "mocked error";
+    (axios.get as jest.MockedFunction<typeof axios.get>).mockRejectedValueOnce(
+      mockedError
+    );
 
-      const result = await getUrl("http://mocked-url.com")();
+    const result = await getUrl("http://mocked-url.com")();
 
-      expect(result).toEqual(await TE.left(new NetworkError(String('mocked error')))());
-    });
-  })
+    expect(result).toEqualLeft(new NetworkError(String('mocked error')))
+  });
 });
+
+describe("validateJoke", () => {
+  it("returns Right with a valid joke object", () => {
+    const validJoke = {
+      setup: 'a', punchline: 'b'
+    }
+    expect(validateJoke(validJoke)).toEqualRight(validJoke)
+  })
+  it("returns Left with an invalid joke object", () => {
+    const jokeWithoutPunchline = {
+      setup: 'a'
+    }
+    expect(validateJoke(jokeWithoutPunchline)).toBeLeft()
+
+    const jokeWithoutSetup = {
+      punchline: 'b'
+    }
+    expect(validateJoke(jokeWithoutSetup)).toBeLeft()
+
+    const emptyJoke = {}
+    expect(validateJoke(emptyJoke)).toBeLeft()
+
+    const jokeWithInvalidTypes = {
+      setup: true, punchline: 5
+    }
+    expect(validateJoke(jokeWithInvalidTypes)).toBeLeft()
+  })
+})

@@ -16,6 +16,8 @@ export type JokeResultsError =
   | NetworkError
   | z.ZodError<ValidJokeType>
 
+// TODO we can use dependency injection here with a ReaderTaskEither monad instead
+// This would let us decouple axios and make testing a little cleaner
 export const getUrl = (url: string) =>
   TE.tryCatch(
     () => axios.get(url).then((res) => res.data),
@@ -24,13 +26,13 @@ export const getUrl = (url: string) =>
 
 export const validateJoke = (x: object) => {
   const parsed = ValidJoke.safeParse(x);
-  return parsed.success ? TE.right(parsed.data) : TE.left(parsed.error);
+  return parsed.success ? E.right(parsed.data) : E.left(parsed.error);
 };
 
 export const getJokeFromApi = (
   url: string
 ): TE.TaskEither<JokeResultsError, ValidJokeType> => {
-  return pipe(url, getUrl, TE.chainW(validateJoke));
+  return pipe(url, getUrl, TE.fromEitherK(validateJoke));
 };
 
 function App() {
