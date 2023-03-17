@@ -12,7 +12,7 @@ describe("getUrl", () => {
       mockedResponse
     );
 
-    const result = await getUrl("http://mocked-url.com")();
+    const result = await getUrl("http://mocked-url.com")(axios)();
 
     // This matcher comes from a library: https://github.com/relmify/jest-fp-ts
     // It would be perfect if it had a matcher for TaskEither (we could have a simple unit test for getUrl => instance of TaskEither)
@@ -27,7 +27,7 @@ describe("getUrl", () => {
       mockedError
     );
 
-    const result = await getUrl("http://mocked-url.com")();
+    const result = await getUrl("http://mocked-url.com")(axios)();
 
     expect(result).toEqualLeft(new NetworkError(String('mocked error')))
   });

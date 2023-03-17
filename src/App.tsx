@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import './App.css';
 import { NetworkError } from './Errors';
 
+import * as RTE from 'fp-ts/lib/ReaderTaskEither'
 import * as TE from 'fp-ts/lib/TaskEither';
 import * as E from 'fp-ts/lib/Either';
 import { pipe } from 'fp-ts/lib/function'; 
 import { z } from 'zod';
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { match, P } from 'ts-pattern';
 
 const ValidJoke = z.object({setup: z.string(), punchline: z.string()})
@@ -16,23 +17,29 @@ export type JokeResultsError =
   | NetworkError
   | z.ZodError<ValidJokeType>
 
-// TODO we can use dependency injection here with a ReaderTaskEither monad instead
-// This would let us decouple axios and make testing a little cleaner
-export const getUrl = (url: string) =>
+export const getUrl = (url: string) => (
+  instance: AxiosInstance
+): TE.TaskEither<NetworkError, unknown> =>
   TE.tryCatch(
-    () => axios.get(url).then((res) => res.data),
+    () => instance.get(url).then((res) => res.data),
     (reason) => new NetworkError(String(reason))
-);
+  );
 
-export const validateJoke = (x: object) => {
+// I don't like dealing with an unknown here... but a type-guard to ensure an object seems excessive
+export const validateJoke = (x: object | unknown) => {
   const parsed = ValidJoke.safeParse(x);
   return parsed.success ? E.right(parsed.data) : E.left(parsed.error);
 };
 
 export const getJokeFromApi = (
   url: string
-): TE.TaskEither<JokeResultsError, ValidJokeType> => {
-  return pipe(url, getUrl, TE.fromEitherK(validateJoke));
+): RTE.ReaderTaskEither<AxiosInstance, JokeResultsError, ValidJokeType> => {
+  return pipe(
+    // Allows for dependency injection and passes the injected value into the pipe
+    RTE.ask<AxiosInstance>(),
+    RTE.chainTaskEitherKW((instance) => getUrl(url)(instance)),
+    RTE.chainW((response) => RTE.fromEither(validateJoke(response)))
+  );
 };
 
 function App() {
@@ -44,7 +51,8 @@ function App() {
 
   const unsafeHandleClick = async () => {
     pipe(
-      await getJokeFromApi(url)(),
+      // Here we see a new parameter, our injected dependency
+      await getJokeFromApi(url)(axios)(),
       E.fold(
         (error) => {
           match(error)
